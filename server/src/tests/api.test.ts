@@ -1,0 +1,347 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import request from 'supertest';
+import mongoose from 'mongoose';
+import app from '../app';
+import { connectDB, disconnectDB } from '../config/db';
+import { User } from '../models/User';
+import { Course } from '../models/Course';
+import { Section } from '../models/Section';
+import { Lesson } from '../models/Lesson';
+import { Enrollment } from '../models/Enrollment';
+import { Certificate } from '../models/Certificate';
+
+describe('EduGo Platform API Comprehensive Test Suite', () => {
+  let teacherToken: string;
+  let teacher2Token: string;
+  let studentToken: string;
+  let teacherId: string;
+  let teacher2Id: string;
+  let studentId: string;
+  let testCourseId: string;
+  let testSectionId: string;
+  let testLessonId: string;
+  let optionalLessonId: string;
+
+  beforeAll(async () => {
+    await connectDB();
+  });
+
+  afterAll(async () => {
+    await disconnectDB();
+  });
+
+  describe('1. Health Check & Basic Endpoints', () => {
+    it('should return 200 OK for /api/health with EduGo brand metadata', async () => {
+      const res = await request(app).get('/api/health');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ok');
+      expect(res.body.app).toBe('EduGo');
+      expect(res.body.tagline).toBe('Learn on the Move');
+    });
+  });
+
+  describe('2. Authentication Flow & Role Enforcement', () => {
+    it('should successfully register a new student', async () => {
+      const email = `test.student.${Date.now()}@edugo.test`;
+      const res = await request(app).post('/api/auth/register').send({
+        name: 'Automated Student Tester',
+        email,
+        password: 'Password123!',
+        role: 'student',
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.token).toBeDefined();
+      expect(res.body.user.role).toBe('student');
+      studentToken = res.body.token;
+      studentId = res.body.user.id;
+    });
+
+    it('should successfully register a new teacher', async () => {
+      const email = `test.teacher.${Date.now()}@edugo.test`;
+      const res = await request(app).post('/api/auth/register').send({
+        name: 'Automated Teacher Tester',
+        email,
+        password: 'Password123!',
+        role: 'teacher',
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.token).toBeDefined();
+      expect(res.body.user.role).toBe('teacher');
+      teacherToken = res.body.token;
+      teacherId = res.body.user.id;
+    });
+
+    it('should register a second teacher to test unauthorized cross-course edits', async () => {
+      const email = `test.teacher2.${Date.now()}@edugo.test`;
+      const res = await request(app).post('/api/auth/register').send({
+        name: 'Second Teacher Tester',
+        email,
+        password: 'Password123!',
+        role: 'teacher',
+      });
+
+      expect(res.status).toBe(201);
+      teacher2Token = res.body.token;
+      teacher2Id = res.body.user.id;
+    });
+
+    it('should reject registration with duplicate email', async () => {
+      const user = await User.findById(studentId);
+      const res = await request(app).post('/api/auth/register').send({
+        name: 'Duplicate Student',
+        email: user?.email,
+        password: 'Password123!',
+        role: 'student',
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should reject login with incorrect password', async () => {
+      const user = await User.findById(studentId);
+      const res = await request(app).post('/api/auth/login').send({
+        email: user?.email,
+        password: 'WrongPassword999!',
+      });
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should successfully log in with valid credentials and return JWT', async () => {
+      const user = await User.findById(studentId);
+      const res = await request(app).post('/api/auth/login').send({
+        email: user?.email,
+        password: 'Password123!',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.token).toBeDefined();
+    });
+
+    it('should return current authenticated profile from /api/auth/me', async () => {
+      const res = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.user.id).toBe(studentId);
+    });
+  });
+
+  describe('3. Course Management & Curriculum (Teacher)', () => {
+    it('should allow teacher to create a new draft course', async () => {
+      const res = await request(app)
+        .post('/api/courses')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          title: 'Automated Test Course',
+          summary: 'A course created during automated testing',
+          description: '<p>Comprehensive test course description.</p>',
+          category: 'Web Development',
+          difficulty: 'Beginner',
+          learningObjectives: ['Learn automated testing', 'Verify permissions'],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.course.status).toBe('draft');
+      testCourseId = res.body.course._id;
+    });
+
+    it('should NOT list draft course in public courses exploration', async () => {
+      const res = await request(app).get('/api/courses?search=Automated+Test+Course');
+      expect(res.status).toBe(200);
+      const found = res.body.data.some((c: any) => c._id === testCourseId);
+      expect(found).toBe(false);
+    });
+
+    it('should reject students from creating courses (role check)', async () => {
+      const res = await request(app)
+        .post('/api/courses')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({
+          title: 'Student Attempt Course',
+          summary: 'Should fail',
+          description: 'Should fail',
+          category: 'Web Development',
+        });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('should allow teacher to create curriculum sections and lessons', async () => {
+      // 1. Create Section
+      const secRes = await request(app)
+        .post(`/api/courses/${testCourseId}/sections`)
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ title: 'Section 1: Test Fundamentals' });
+
+      expect(secRes.status).toBe(201);
+      testSectionId = secRes.body.section._id;
+
+      // 2. Create Required Lesson (video)
+      const lesRes = await request(app)
+        .post(`/api/courses/${testCourseId}/sections/${testSectionId}/lessons`)
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          title: 'Lesson 1: Introduction Video',
+          type: 'video',
+          isRequired: true,
+          content: { videoUrl: 'https://example.com/video.mp4' },
+        });
+
+      expect(lesRes.status).toBe(201);
+      testLessonId = lesRes.body.lesson._id;
+
+      // 3. Create Optional Lesson (file)
+      const optRes = await request(app)
+        .post(`/api/courses/${testCourseId}/sections/${testSectionId}/lessons`)
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          title: 'Lesson 2: Optional Cheat Sheet',
+          type: 'file',
+          isRequired: false,
+          content: { fileUrl: 'https://example.com/cheatsheet.pdf', fileName: 'cheat.pdf' },
+        });
+
+      expect(optRes.status).toBe(201);
+      optionalLessonId = optRes.body.lesson._id;
+    });
+
+    it('should prevent teacher 2 from modifying teacher 1 course', async () => {
+      const res = await request(app)
+        .put(`/api/courses/${testCourseId}`)
+        .set('Authorization', `Bearer ${teacher2Token}`)
+        .send({ title: 'Malicious Update by Another Teacher' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should allow owner teacher to publish the course', async () => {
+      const res = await request(app)
+        .patch(`/api/courses/${testCourseId}/publish`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('published');
+    });
+
+    it('should now display published course in public exploration', async () => {
+      const res = await request(app).get('/api/courses?search=Automated+Test+Course');
+      expect(res.status).toBe(200);
+      const found = res.body.data.some((c: any) => c._id === testCourseId);
+      expect(found).toBe(true);
+    });
+  });
+
+  describe('4. Enrollment & Progress Calculation (Student)', () => {
+    it('should allow student to enroll in the free published course', async () => {
+      const res = await request(app)
+        .post(`/api/courses/${testCourseId}/enroll`)
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.enrollment.progressPercentage).toBe(0);
+    });
+
+    it('should prevent duplicate enrollment for the same student', async () => {
+      const res = await request(app)
+        .post(`/api/courses/${testCourseId}/enroll`)
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should mark required lesson complete and update progress percentage to 100%', async () => {
+      const res = await request(app)
+        .post(`/api/courses/${testCourseId}/lessons/${testLessonId}/complete`)
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.progressPercentage).toBe(100);
+      expect(res.body.isCourseCompleted).toBe(true);
+      expect(res.body.certificate).toBeDefined();
+    });
+
+    it('should confirm optional lesson does NOT block 100% course completion', async () => {
+      const res = await request(app)
+        .get(`/api/courses/${testCourseId}/progress`)
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.progressPercentage).toBe(100);
+      expect(res.body.isCompleted).toBe(true);
+    });
+  });
+
+  describe('5. Reviews & Ratings', () => {
+    it('should allow enrolled student to review course and update average rating', async () => {
+      const res = await request(app)
+        .post(`/api/courses/${testCourseId}/reviews`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({
+          rating: 5,
+          comment: 'Fantastic course with clear lessons!',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+
+      // Verify course average rating updated
+      const course = await Course.findById(testCourseId);
+      expect(course?.averageRating).toBe(5);
+      expect(course?.reviewCount).toBe(1);
+    });
+
+    it('should prevent duplicate review by same student on same course', async () => {
+      const res = await request(app)
+        .post(`/api/courses/${testCourseId}/reviews`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ rating: 4, comment: 'Second review attempt' });
+
+      expect(res.status).toBe(409);
+    });
+  });
+
+  describe('6. Automatic PDF Certificate Generation & Verification', () => {
+    let issuedCertificateId: string;
+
+    it('should list earned certificate in student certificates', async () => {
+      const res = await request(app)
+        .get('/api/certificates/my-certificates')
+        .set('Authorization', `Bearer ${studentToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.certificates.length).toBeGreaterThan(0);
+      issuedCertificateId = res.body.certificates[0].certificateId;
+      expect(issuedCertificateId).toMatch(/^EDUGO-\d{4}-[A-Z0-9]+$/);
+    });
+
+    it('should allow public verification of issued certificate without leaking private data', async () => {
+      const res = await request(app).get(`/api/certificates/verify/${issuedCertificateId}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.isValid).toBe(true);
+      expect(res.body.certificate.studentName).toBe('Automated Student Tester');
+      expect(res.body.certificate.courseTitle).toBe('Automated Test Course');
+      expect(res.body.certificate.email).toBeUndefined(); // Private email protected!
+    });
+
+    it('should return 404 for invalid certificate verification ID', async () => {
+      const res = await request(app).get('/api/certificates/verify/FAKE-ID-999');
+      expect(res.status).toBe(404);
+      expect(res.body.isValid).toBe(false);
+    });
+  });
+});
