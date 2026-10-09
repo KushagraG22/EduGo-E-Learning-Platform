@@ -29,6 +29,8 @@ export const Badge: React.FC<BadgeProps> = ({
   } else if (variant === 'status' && status) {
     if (status === 'published') {
       badgeStyles = 'bg-emerald-50 text-emerald-700 border border-emerald-200/60';
+    } else if (status === 'archived') {
+      badgeStyles = 'bg-rose-50 text-rose-700 border border-rose-200/60';
     } else {
       badgeStyles = 'bg-amber-50 text-amber-700 border border-amber-200/60';
     }

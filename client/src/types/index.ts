@@ -11,7 +11,7 @@ export interface User {
 }
 
 export type CourseDifficulty = 'Beginner' | 'Intermediate' | 'Advanced';
-export type CourseStatus = 'draft' | 'published';
+export type CourseStatus = 'draft' | 'published' | 'archived';
 
 export interface Course {
   _id: string;
@@ -34,6 +34,8 @@ export interface Course {
   };
   estimatedDuration: string;
   status: CourseStatus;
+  isDeleted?: boolean;
+  deletedAt?: string;
   enrolledCount: number;
   averageRating: number;
   reviewCount: number;

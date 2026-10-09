@@ -6,11 +6,17 @@ import {
   getMe,
   forgotPassword,
   resetPassword,
+  getAuthConfig,
+  getGoogleOAuthUrl,
+  getDevLastEmail,
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
+router.get('/config', getAuthConfig);
+router.get('/google/url', getGoogleOAuthUrl);
+router.get('/dev-last-email', getDevLastEmail);
 router.post('/register', register);
 router.post('/login', login);
 router.post('/google', googleLogin);

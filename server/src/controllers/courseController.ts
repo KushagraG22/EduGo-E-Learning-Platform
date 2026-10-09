@@ -26,7 +26,7 @@ export const getCourses = async (
   try {
     const { search, category, difficulty, sortBy = 'newest', page = '1', limit = '12' } = req.query;
 
-    const query: any = { status: 'published' };
+    const query: any = { status: 'published', isDeleted: { $ne: true } };
 
     if (search) {
       query.$or = [
@@ -95,6 +95,29 @@ export const getCourseDetails = async (
     if (!course) {
       res.status(404).json({ success: false, message: 'Course not found' });
       return;
+    }
+
+    // If course is deleted or archived, only enrolled students or its instructor can access
+    if (course.isDeleted || course.status === 'archived') {
+      let isAllowed = false;
+      if (req.user) {
+        if (course.instructor.equals(req.user._id)) {
+          isAllowed = true;
+        } else if (req.user.role === 'student') {
+          const enrollment = await Enrollment.findOne({
+            studentId: req.user._id,
+            courseId: course._id,
+          });
+          if (enrollment) isAllowed = true;
+        }
+      }
+      if (!isAllowed) {
+        res.status(404).json({
+          success: false,
+          message: 'This course has been archived by the instructor and is no longer available.',
+        });
+        return;
+      }
     }
 
     // If course is draft, only its instructor can view it
@@ -355,10 +378,20 @@ export const deleteCourse = async (
       return;
     }
 
+    if (req.user.role !== 'teacher') {
+      res.status(403).json({ success: false, message: 'Only teachers can delete courses.' });
+      return;
+    }
+
     const { courseId } = req.params;
+    if (!courseId || !mongoose.Types.ObjectId.isValid(courseId)) {
+      res.status(400).json({ success: false, message: 'Invalid course ID format' });
+      return;
+    }
+
     const course = await Course.findById(courseId);
 
-    if (!course) {
+    if (!course || course.isDeleted) {
       res.status(404).json({ success: false, message: 'Course not found' });
       return;
     }
@@ -371,14 +404,15 @@ export const deleteCourse = async (
       return;
     }
 
-    // Clean up sections and lessons
-    await Section.deleteMany({ courseId: course._id });
-    await Lesson.deleteMany({ courseId: course._id });
-    await Course.findByIdAndDelete(course._id);
+    // Safe deletion: soft delete / archival to preserve student certificates and learning history
+    course.isDeleted = true;
+    course.status = 'archived';
+    course.deletedAt = new Date();
+    await course.save();
 
     res.status(200).json({
       success: true,
-      message: 'Course and curriculum successfully deleted.',
+      message: 'Course successfully deleted and removed from public catalog. Existing student certificates and learning history remain safely preserved.',
     });
   } catch (error) {
     next(error);
@@ -397,8 +431,8 @@ export const getTeacherCourses = async (
     }
 
     const { status } = req.query;
-    const filter: any = { instructor: req.user._id };
-    if (status && ['draft', 'published'].includes(status as string)) {
+    const filter: any = { instructor: req.user._id, isDeleted: { $ne: true } };
+    if (status && ['draft', 'published', 'archived'].includes(status as string)) {
       filter.status = status;
     }
 
@@ -424,7 +458,7 @@ export const getTeacherDashboardStats = async (
       return;
     }
 
-    const courses = await Course.find({ instructor: req.user._id });
+    const courses = await Course.find({ instructor: req.user._id, isDeleted: { $ne: true } });
     const courseIds = courses.map((c) => c._id);
 
     const totalCourses = courses.length;

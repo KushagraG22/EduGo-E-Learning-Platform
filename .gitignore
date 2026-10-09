@@ -3,28 +3,37 @@ node_modules/
 .pnp
 .pnp.js
 
-# Production builds
+# Production builds & artifacts
 dist/
 build/
+client/dist/
+server/dist/
 *.tsbuildinfo
 
-# Environment variables
+# Environment variables and secrets
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+*.env
+server/.env
+client/.env
+!.env.example
 
-# Logs
+# Uploaded user files & generated assets
+server/uploads/
+uploads/
+client/uploads/
+*.pdf
+
+# Duplicate / staging export folders
+github-upload/
+github-upload*/
+
+# Logs & debugging
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 logs/
 *.log
-
-# Uploads directory
-server/uploads/
-uploads/
 
 # IDE & OS
 .vscode/

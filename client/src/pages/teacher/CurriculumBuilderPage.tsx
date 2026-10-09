@@ -13,11 +13,14 @@ import {
   FolderPlus,
   Upload,
   AlertCircle,
+  Youtube,
+  Video,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Course, Section, Lesson, LessonType } from '../../types';
 import { Modal } from '../../components/common/Modal';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
+import { extractYouTubeVideoId, isHlsStream } from '../../utils/videoUtils';
 
 export const CurriculumBuilderPage: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
@@ -579,15 +582,50 @@ export const CurriculumBuilderPage: React.FC = () => {
             {/* Dynamic Content Fields based on Lesson Type */}
             {lessonType === 'video' && (
               <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <label className="block text-xs font-bold text-slate-700">Video Content</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Video Source URL
+                  </label>
+                  {videoUrl.trim() && (
+                    <div>
+                      {extractYouTubeVideoId(videoUrl) ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 text-[11px] font-semibold">
+                          <Youtube className="w-3.5 h-3.5 text-red-600" />
+                          YouTube Video Detected
+                        </span>
+                      ) : isHlsStream(videoUrl) ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 text-[11px] font-semibold">
+                          <Video className="w-3.5 h-3.5 text-cyan-600" />
+                          HLS Stream (.m3u8) Detected
+                        </span>
+                      ) : videoUrl.match(/\.(mp4|webm|ogv)/i) ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
+                          <Video className="w-3.5 h-3.5 text-emerald-600" />
+                          Direct Video Stream Detected
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-medium">
+                          <Video className="w-3.5 h-3.5 text-slate-500" />
+                          Direct Video URL
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <input
                   type="text"
-                  placeholder="Direct video stream URL (MP4, WebM, HLS)"
+                  placeholder="Paste YouTube link (youtube.com/watch?v=..., youtu.be/...) or direct MP4/WebM/HLS URL"
                   value={videoUrl}
                   onChange={(e) => setVideoUrl(e.target.value)}
-                  className="w-full px-4 py-2 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500"
+                  className="w-full px-4 py-2.5 bg-white text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-brand-500"
                 />
-                <div className="flex items-center gap-2">
+
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Paste any YouTube link directly or enter a direct MP4, WebM, or HLS stream URL.
+                </p>
+
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
                   <span className="text-xs text-slate-400">or upload video file:</span>
                   <label className="cursor-pointer px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5">
                     <Upload className="w-3.5 h-3.5" />

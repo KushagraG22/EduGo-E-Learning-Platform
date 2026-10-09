@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Logo } from '../../components/common/Logo';
+import { GoogleLoginButton } from '../../components/auth/GoogleLoginButton';
 
 export const LoginPage: React.FC = () => {
   const { login, googleLogin } = useAuth();
@@ -119,6 +120,25 @@ export const LoginPage: React.FC = () => {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="relative my-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
+                Or
+              </span>
+            </div>
+          </div>
+
+          {/* Google Login Button */}
+          <GoogleLoginButton
+            role="student"
+            text="Continue with Google"
+            onError={(msg) => setError(msg)}
+          />
 
           {/* Quick Demo Credentials Assistant */}
           <div className="pt-4 border-t border-slate-100">

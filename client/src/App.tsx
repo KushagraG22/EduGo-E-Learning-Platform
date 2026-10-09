@@ -17,6 +17,7 @@ import { RegisterPage } from './pages/public/RegisterPage';
 import { ForgotPasswordPage } from './pages/public/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/public/ResetPasswordPage';
 import { CertificateVerificationPage } from './pages/public/CertificateVerificationPage';
+import { AuthCallbackPage } from './pages/public/AuthCallbackPage';
 import { PrivacyPolicyPage } from './pages/public/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/public/TermsOfServicePage';
 import { NotFoundPage } from './pages/public/NotFoundPage';
@@ -62,6 +63,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/teachers/:teacherId" element={<PublicTeacherProfilePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/auth/google/callback" element={<AuthCallbackPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/verify" element={<CertificateVerificationPage />} />

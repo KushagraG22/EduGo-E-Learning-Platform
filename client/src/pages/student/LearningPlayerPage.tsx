@@ -22,6 +22,7 @@ import { Course, Lesson } from '../../types';
 import { ProgressBar } from '../../components/common/ProgressBar';
 import { Modal } from '../../components/common/Modal';
 import { RatingStars } from '../../components/common/RatingStars';
+import { VideoPlayer } from '../../components/player/VideoPlayer';
 
 interface CurriculumSection {
   _id: string;
@@ -114,15 +115,19 @@ export const LearningPlayerPage: React.FC = () => {
   }, [courseId, navigate]);
 
   // Track playback time when video updates
-  const handleTimeUpdate = () => {
-    if (videoRef.current && currentLesson) {
-      const watched = Math.floor(videoRef.current.currentTime);
-      // Track playback every 15 seconds
-      if (watched > 0 && watched % 15 === 0) {
-        api.post(`/courses/${courseId}/lessons/${currentLesson._id}/track`, {
-          watchedSeconds: watched,
-        }).catch(() => {});
-      }
+  const handleTimeUpdate = (currentTime?: number) => {
+    if (!currentLesson) return;
+    const watched =
+      typeof currentTime === 'number'
+        ? Math.floor(currentTime)
+        : videoRef.current
+        ? Math.floor(videoRef.current.currentTime)
+        : 0;
+    // Track playback every 15 seconds
+    if (watched > 0 && watched % 15 === 0) {
+      api.post(`/courses/${courseId}/lessons/${currentLesson._id}/track`, {
+        watchedSeconds: watched,
+      }).catch(() => {});
     }
   };
 
@@ -254,20 +259,14 @@ export const LearningPlayerPage: React.FC = () => {
             <div className="flex-1 flex flex-col p-4 sm:p-8 max-w-5xl mx-auto w-full space-y-6">
               {/* Media Content Area */}
               {currentLesson.type === 'video' && (
-                <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-800">
-                  <video
-                    ref={videoRef}
-                    key={currentLesson.content?.videoUrl}
-                    controls
-                    playsInline
-                    onTimeUpdate={handleTimeUpdate}
-                    src={
-                      currentLesson.content?.videoUrl ||
-                      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
-                    }
-                    className="w-full h-full object-contain"
-                  />
-                </div>
+                <VideoPlayer
+                  videoUrl={
+                    currentLesson.content?.videoUrl ||
+                    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+                  }
+                  lessonTitle={currentLesson.title}
+                  onTimeUpdate={(currentTime) => handleTimeUpdate(currentTime)}
+                />
               )}
 
               {currentLesson.type === 'text' && (

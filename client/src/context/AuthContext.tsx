@@ -8,7 +8,10 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   register: (name: string, email: string, password: string, role: UserRole) => Promise<{ success: boolean; message?: string }>;
-  googleLogin: (credential: string, role?: UserRole) => Promise<{ success: boolean; message?: string }>;
+  googleLogin: (
+    credentialOrParams: string | { credential?: string; code?: string; redirectUri?: string; role?: UserRole },
+    role?: UserRole
+  ) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   updateUser: (updatedData: Partial<User>) => void;
 }
@@ -95,9 +98,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const googleLogin = async (credential: string, role: UserRole = 'student') => {
+  const googleLogin = async (
+    credentialOrParams: string | { credential?: string; code?: string; redirectUri?: string; role?: UserRole },
+    role: UserRole = 'student'
+  ) => {
     try {
-      const res = await api.post('/auth/google', { credential, role });
+      let body: any = {};
+      if (typeof credentialOrParams === 'string') {
+        body = { credential: credentialOrParams, role };
+      } else {
+        body = { ...credentialOrParams, role: credentialOrParams.role || role };
+      }
+
+      const res = await api.post('/auth/google', body);
       if (res.data?.success) {
         const { token: newToken, user: newUser } = res.data;
         setToken(newToken);

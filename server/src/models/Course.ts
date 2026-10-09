@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type CourseDifficulty = 'Beginner' | 'Intermediate' | 'Advanced';
-export type CourseStatus = 'draft' | 'published';
+export type CourseStatus = 'draft' | 'published' | 'archived';
 
 export interface ICourse extends Document {
   _id: mongoose.Types.ObjectId;
@@ -17,6 +17,8 @@ export interface ICourse extends Document {
   instructor: mongoose.Types.ObjectId;
   estimatedDuration: string;
   status: CourseStatus;
+  isDeleted: boolean;
+  deletedAt?: Date | null;
   enrolledCount: number;
   averageRating: number;
   reviewCount: number;
@@ -87,10 +89,19 @@ const CourseSchema = new Schema<ICourse>(
     },
     status: {
       type: String,
-      enum: ['draft', 'published'],
+      enum: ['draft', 'published', 'archived'],
       default: 'draft',
       required: true,
       index: true,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
     enrolledCount: {
       type: Number,
@@ -117,5 +128,6 @@ const CourseSchema = new Schema<ICourse>(
 // Search indexes
 CourseSchema.index({ title: 'text', summary: 'text', description: 'text' });
 CourseSchema.index({ status: 1, category: 1, difficulty: 1, createdAt: -1 });
+CourseSchema.index({ isDeleted: 1, instructor: 1, status: 1 });
 
 export const Course = mongoose.model<ICourse>('Course', CourseSchema);

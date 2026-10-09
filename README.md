@@ -106,21 +106,78 @@ cp .env.example .env
 | `JWT_EXPIRES_IN`| `7d` | Lifetime of authentication tokens |
 | `GOOGLE_CLIENT_ID`| *(Optional)* | Google Cloud OAuth Client ID for Google Sign-In |
 | `GOOGLE_CLIENT_SECRET`| *(Optional)* | Google Cloud OAuth Client Secret |
-| `SMTP_HOST` | *(Optional)* | SMTP server host for sending password reset emails |
-| `SMTP_PORT` | `587` | SMTP server port |
-| `SMTP_USER` | *(Optional)* | SMTP username/email |
-| `SMTP_PASS` | *(Optional)* | SMTP password/app password |
+| `SMTP_HOST` | *(Optional)* | SMTP server host (e.g. `smtp.gmail.com`, `smtp.mailtrap.io`) |
+| `SMTP_PORT` | `587` | SMTP server port (`587` for TLS, `465` for SSL) |
+| `SMTP_USER` | *(Optional)* | SMTP account email / username |
+| `SMTP_PASS` | *(Optional)* | SMTP account password / Google App Password |
+| `EMAIL_FROM` | `EduGo <no-reply@edugo.org>` | Sender display name and address |
 | `CLOUDINARY_CLOUD_NAME`| *(Optional)* | Cloudinary cloud name for remote media hosting |
 | `CLOUDINARY_API_KEY`| *(Optional)* | Cloudinary API Key |
 | `CLOUDINARY_API_SECRET`| *(Optional)* | Cloudinary API Secret |
 
-> **Note on Optional Services:**
-> - If **SMTP** is not configured, EduGo logs secure password reset URLs directly to the backend terminal for seamless local development.
-> - If **Cloudinary** is not configured, EduGo automatically stores uploaded thumbnails, videos, and resource files in `server/uploads/` with zero external dependencies.
+---
+
+### 3. Google OAuth Setup Guide
+
+EduGo integrates genuine Google OAuth using both Google Identity Services (GSI ID token verification) and standard OAuth2 authorization code flows.
+
+To enable Google login on your local or production instance:
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project (e.g., `EduGo E-Learning`).
+3. Navigate to **APIs & Services > OAuth consent screen**:
+   - Choose User Type: **External**.
+   - Fill in App Name (`EduGo`), User support email, and Developer contact information.
+   - Add scopes: `.../auth/userinfo.email` and `.../auth/userinfo.profile`.
+4. Navigate to **APIs & Services > Credentials**:
+   - Click **Create Credentials > OAuth client ID**.
+   - Application type: **Web application**.
+   - Name: `EduGo Web Client`.
+   - **Authorized JavaScript origins**:
+     - `http://localhost:5173`
+   - **Authorized redirect URIs**:
+     - `http://localhost:5173/auth/google/callback`
+5. Copy your **Client ID** and **Client Secret** into your `.env` file:
+   ```env
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   ```
+6. Restart the backend server. The "Continue with Google" button on both Login and Register pages will now authenticate against your Google project.
 
 ---
 
-### 3. Installation
+### 4. Password Reset & Email (SMTP) Setup Guide
+
+EduGo dispatches single-use, 1-hour expiring password reset links.
+
+#### Option A: Gmail (Recommended for quick testing)
+1. In your Google Account, enable **2-Step Verification**.
+2. Go to **Security > App passwords** (or search "App passwords").
+3. Create an app password for `EduGo Email`.
+4. Configure your `.env`:
+   ```env
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=your-email@gmail.com
+   SMTP_PASS=your-16-character-app-password
+   EMAIL_FROM="EduGo <your-email@gmail.com>"
+   ```
+
+#### Option B: Mailtrap or Brevo (Recommended for team testing)
+1. Create a free account on [Mailtrap.io](https://mailtrap.io/) or [Brevo.com](https://www.brevo.com/).
+2. Copy your SMTP credentials to `.env`:
+   ```env
+   SMTP_HOST=sandbox.smtp.mailtrap.io
+   SMTP_PORT=2525
+   SMTP_USER=your-mailtrap-user
+   SMTP_PASS=your-mailtrap-password
+   ```
+
+#### Option C: Automated Development Mode (Zero External Setup Required)
+- When SMTP credentials are not configured, EduGo automatically routes emails through an Ethereal test inbox or in-memory dispatch tracker, logging preview links in development and allowing full local end-to-end testing without external mail accounts.
+
+---
+
+### 5. Installation
 Install root, server, and client dependencies:
 
 ```bash
@@ -136,7 +193,7 @@ cd ../client && npm install
 
 ---
 
-### 4. Seed the Database
+### 6. Seed the Database
 Populate real sample teachers, students, published courses, curriculum modules, reviews, announcements, and certificates:
 
 ```bash
@@ -153,7 +210,7 @@ npm run seed --prefix server
 
 ---
 
-### 5. Running the Application Locally
+### 7. Running the Application Locally
 Run both backend and frontend concurrently:
 
 ```bash

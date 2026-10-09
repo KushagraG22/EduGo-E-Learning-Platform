@@ -4,6 +4,7 @@ import { User, Mail, Lock, AlertCircle, ArrowRight, CheckCircle2 } from 'lucide-
 import { useAuth } from '../../context/AuthContext';
 import { Logo } from '../../components/common/Logo';
 import { UserRole } from '../../types';
+import { GoogleLoginButton } from '../../components/auth/GoogleLoginButton';
 
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
@@ -215,6 +216,25 @@ export const RegisterPage: React.FC = () => {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="relative my-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
+                Or
+              </span>
+            </div>
+          </div>
+
+          {/* Google Register Button */}
+          <GoogleLoginButton
+            role={role}
+            text={`Continue with Google as ${role === 'teacher' ? 'Teacher' : 'Student'}`}
+            onError={(msg) => setError(msg)}
+          />
 
           <div className="text-center pt-2">
             <p className="text-xs text-slate-500">

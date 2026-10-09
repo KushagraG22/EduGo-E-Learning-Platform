@@ -34,10 +34,10 @@ export const enrollInCourse = async (
       return;
     }
 
-    if (course.status !== 'published') {
+    if (course.isDeleted || course.status !== 'published') {
       res.status(400).json({
         success: false,
-        message: 'Cannot enroll in an unpublished course.',
+        message: 'Cannot enroll in a deleted or unpublished course.',
       });
       return;
     }

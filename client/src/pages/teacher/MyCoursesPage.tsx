@@ -10,6 +10,8 @@ import {
   Megaphone,
   Layers,
   Sparkles,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Course } from '../../types';
@@ -22,6 +24,8 @@ export const MyCoursesPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState<string>('');
+  const [deleteError, setDeleteError] = useState<string>('');
 
   const fetchCourses = async () => {
     setLoading(true);
@@ -48,14 +52,20 @@ export const MyCoursesPage: React.FC = () => {
   const handleDeleteCourse = async () => {
     if (!courseToDelete) return;
     setDeleting(true);
+    setDeleteError('');
+    setDeleteSuccess('');
     try {
       const res = await api.delete(`/courses/${courseToDelete._id}`);
       if (res.data?.success) {
         setCourses((prev) => prev.filter((c) => c._id !== courseToDelete._id));
+        setDeleteSuccess(
+          res.data?.message ||
+            `Course "${courseToDelete.title}" was successfully deleted and archived from the public catalog.`
+        );
         setCourseToDelete(null);
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete course');
+      setDeleteError(err.response?.data?.message || 'Failed to delete course');
     } finally {
       setDeleting(false);
     }
@@ -81,6 +91,40 @@ export const MyCoursesPage: React.FC = () => {
             Create Course
           </Link>
         </div>
+
+        {/* Success Feedback Banner */}
+        {deleteSuccess && (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-emerald-800 text-xs font-semibold animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>{deleteSuccess}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeleteSuccess('')}
+              className="text-emerald-600 hover:text-emerald-800 font-bold ml-4"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Error Feedback Banner */}
+        {deleteError && (
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between gap-3 text-rose-800 text-xs font-semibold animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>{deleteError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeleteError('')}
+              className="text-rose-600 hover:text-rose-800 font-bold ml-4"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Tab Filters */}
         <div className="flex items-center gap-2 border-b border-slate-200">
@@ -230,11 +274,15 @@ export const MyCoursesPage: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => setCourseToDelete(course)}
-                    className="p-2 text-red-500 hover:text-red-700 rounded-xl hover:bg-red-50 transition-colors"
+                    onClick={() => {
+                      setDeleteError('');
+                      setCourseToDelete(course);
+                    }}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 border border-rose-200/60 shadow-sm"
                     title="Delete Course"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Course
                   </button>
                 </div>
               </div>
@@ -247,9 +295,16 @@ export const MyCoursesPage: React.FC = () => {
           isOpen={!!courseToDelete}
           onClose={() => setCourseToDelete(null)}
           onConfirm={handleDeleteCourse}
-          title="Delete Course Confirmation"
-          message={`Are you sure you want to delete "${courseToDelete?.title}"? All associated sections and lessons will also be permanently deleted. This action cannot be undone.`}
-          confirmText="Delete Course"
+          title={`Delete Course: "${courseToDelete?.title}"`}
+          message={`Are you sure you want to delete this course?
+
+• Removal from Public Discovery: This course will be immediately archived and permanently removed from catalog discovery and search.
+• New Enrollments Blocked: No new students will be allowed to enroll.
+• Student Records Protected: Enrolled students will retain access to their existing certificates, verification IDs, and completed learning history.
+
+This action cannot be undone.`}
+          confirmText={deleting ? 'Deleting Course...' : 'Delete Course'}
+          cancelText="Cancel"
           isDangerous
           isLoading={deleting}
         />

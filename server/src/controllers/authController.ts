@@ -6,7 +6,7 @@ import { User, IUser } from '../models/User';
 import { PasswordResetToken } from '../models/PasswordResetToken';
 import { generateToken } from '../utils/jwt';
 import { config } from '../config/env';
-import { sendPasswordResetEmail } from '../services/emailService';
+import { sendPasswordResetEmail, getLastDispatchedEmail } from '../services/emailService';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
 
@@ -139,18 +139,64 @@ export const login = async (
   }
 };
 
+export const getAuthConfig = async (
+  _req: Request,
+  res: Response
+): Promise<void> => {
+  res.status(200).json({
+    success: true,
+    googleClientId: config.googleClientId || '',
+    isGoogleConfigured: Boolean(config.googleClientId),
+    clientUrl: config.clientUrl,
+  });
+};
+
+export const getGoogleOAuthUrl = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  if (!config.googleClientId) {
+    res.status(400).json({
+      success: false,
+      message: 'Google OAuth is not configured on this server. Please set GOOGLE_CLIENT_ID.',
+    });
+    return;
+  }
+
+  const role = (req.query.role as string) || 'student';
+  const redirectUri = (req.query.redirectUri as string) || `${config.clientUrl}/auth/google/callback`;
+
+  const oauthClient = new OAuth2Client(
+    config.googleClientId,
+    config.googleClientSecret,
+    redirectUri
+  );
+
+  const authUrl = oauthClient.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/userinfo.email',
+    ],
+    state: JSON.stringify({ role }),
+    prompt: 'select_account',
+  });
+
+  res.status(200).json({ success: true, url: authUrl });
+};
+
 export const googleLogin = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { credential, role = 'student' } = req.body;
+    const { credential, code, redirectUri, role = 'student' } = req.body;
 
-    if (!credential) {
+    if (!credential && !code) {
       res.status(400).json({
         success: false,
-        message: 'Google credential token is required.',
+        message: 'Google credential ID token or authorization code is required.',
       });
       return;
     }
@@ -163,12 +209,38 @@ export const googleLogin = async (
       return;
     }
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: config.googleClientId,
-    });
+    let payload: any = null;
 
-    const payload = ticket.getPayload();
+    if (code) {
+      // Authorization code flow
+      const oauthClient = new OAuth2Client(
+        config.googleClientId,
+        config.googleClientSecret,
+        redirectUri || `${config.clientUrl}/auth/google/callback`
+      );
+      const { tokens } = await oauthClient.getToken(code);
+      if (!tokens.id_token) {
+        res.status(400).json({
+          success: false,
+          message: 'Failed to retrieve ID token from Google authorization code exchange.',
+        });
+        return;
+      }
+      const ticket = await oauthClient.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: config.googleClientId,
+      });
+      payload = ticket.getPayload();
+    } else {
+      // Google Identity Services (GSI) credential token
+      const oauthClient = new OAuth2Client(config.googleClientId);
+      const ticket = await oauthClient.verifyIdToken({
+        idToken: credential,
+        audience: config.googleClientId,
+      });
+      payload = ticket.getPayload();
+    }
+
     if (!payload || !payload.email) {
       res.status(400).json({
         success: false,
@@ -185,18 +257,29 @@ export const googleLogin = async (
     let user = await User.findOne({ $or: [{ googleId }, { email }] });
 
     if (!user) {
+      const assignedRole = ['student', 'teacher'].includes(role) ? role : 'student';
       user = await User.create({
         name,
         email,
         googleId,
         avatar,
-        role: ['student', 'teacher'].includes(role) ? role : 'student',
+        role: assignedRole,
       });
-    } else if (!user.googleId) {
-      // Safe account linking
-      user.googleId = googleId;
-      if (!user.avatar && avatar) user.avatar = avatar;
-      await user.save();
+      logger.info(`New user registered via Google: ${email} (${assignedRole})`);
+    } else {
+      let updated = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        updated = true;
+      }
+      if (!user.avatar && avatar) {
+        user.avatar = avatar;
+        updated = true;
+      }
+      if (updated) {
+        await user.save();
+      }
+      logger.info(`Existing user authenticated via Google: ${email} (role preserved: ${user.role})`);
     }
 
     const token = generateToken({
@@ -219,8 +302,14 @@ export const googleLogin = async (
         headline: user.headline,
       },
     });
-  } catch (error) {
-    next(error);
+  } catch (error: any) {
+    logger.error('Google login verification failed:', error?.message || error);
+    res.status(400).json({
+      success: false,
+      message: error?.message?.includes('Token used too late')
+        ? 'Google session token expired. Please try again.'
+        : 'Google authentication failed. Please verify your token or credentials.',
+    });
   }
 };
 
@@ -292,12 +381,39 @@ export const forgotPassword = async (
     });
 
     const resetUrl = `${config.clientUrl}/reset-password?token=${rawToken}`;
-    await sendPasswordResetEmail(user.email, resetUrl, user.name);
+    const sendResult = await sendPasswordResetEmail(user.email, resetUrl, user.name);
+
+    if (!sendResult.success) {
+      logger.error(`Password reset email failed to send to ${user.email}: ${sendResult.error}`);
+    } else {
+      logger.info(`Password reset email dispatched for ${user.email} (preview: ${sendResult.previewUrl || 'SMTP'})`);
+    }
 
     res.status(200).json(genericResponse);
   } catch (error) {
     next(error);
   }
+};
+
+export const getDevLastEmail = async (
+  _req: Request,
+  res: Response
+): Promise<void> => {
+  if (config.nodeEnv === 'production') {
+    res.status(403).json({ success: false, message: 'Not available in production' });
+    return;
+  }
+  const last = getLastDispatchedEmail();
+  res.status(200).json({
+    success: true,
+    lastEmail: last ? {
+      to: last.to,
+      subject: last.subject,
+      previewUrl: last.previewUrl,
+      timestamp: last.timestamp,
+      resetUrl: last.resetUrl,
+    } : null,
+  });
 };
 
 export const resetPassword = async (
